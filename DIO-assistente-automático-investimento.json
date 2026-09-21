@@ -1,0 +1,375 @@
+{
+  "name": "DIO-assistente-automático-investimento",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Tratamento dos dados\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nCruzamento dos usuários com os perfis e investimentos possiveis",
+        "height": 368,
+        "width": 864,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        400,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "4dc3d5b5-43a8-491c-942e-63c872aa9b5f",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "# Aquisição de dados",
+        "height": 320,
+        "width": 432,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -48,
+        -224
+      ],
+      "typeVersion": 1,
+      "id": "c987cb6e-6862-4218-9b88-d4b467df93a6",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "Clientes",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "9eed3641-6465-4fd9-9983-2bb5dcb8ebaa",
+      "name": "Webhook dos usuários",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        -144
+      ],
+      "webhookId": "08aa051d-373e-45ad-89f2-a2ce1e0e35ed"
+    },
+    {
+      "parameters": {
+        "url": "https://digitalinnovationone.github.io/dio-lab-assistente-investimentos-rpa-n8n/data.csv",
+        "options": {}
+      },
+      "id": "866e6fea-a7b6-4e92-8537-cfdfc707397d",
+      "name": "HTTP Request dos investimentos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        224,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const csvRaw = $json.data ?? $json.body ?? $json;\nconst text = (typeof csvRaw === \"string\") ? csvRaw : JSON.stringify(csvRaw);\n\nconst lines = text.split(/\\r?\\n/).map(l =>l.trim()).filter(Boolean);\nconst headers = lines[0].split(\",\").map(h => h.trim());\n\nconst investimentos = lines.slice(1).map(line => {\n  const cols = line.split(\",\").map(c => c.trim());\n  const obj = {};\n  headers.forEach((h,i) => obj[h] = cols[i] ?? \"\");\n\n  obj.minimo = Number(String(obj.minimo).replace(/[^\\d]/g, \"\")) || 0;\n\n  return obj;\n});\n\nreturn [{ json : { investimentos } }]"
+      },
+      "id": "029e335b-d04a-4e30-9658-5e1c1a3a6e3d",
+      "name": "Normalização dos investimentos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        -64
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "id": "bd0975df-5810-477c-b120-44c45b71a377",
+      "name": "Cruzamento dos dados",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        672,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Obtém a lista global de investimentos vindos do nó anterior\nconst listaInvestimentos = $input.first().json.investimentos || [];\n\n// Processa a lista de clientes\nreturn ($input.first().json.body?.clientes || []).map(data => {\n  \n  // Normaliza o perfil do cliente para facilitar a busca\n  const perfilCliente = (data.perfil || '').trim();\n  const perfilNorm = perfilCliente.toLowerCase();\n\n  // Filtra os produtos da tabela que correspondem ao perfil do cliente\n  const opcoesRecomendadas = listaInvestimentos.filter(inv => \n    (inv.perfil || '').trim().toLowerCase() === perfilNorm\n  );\n\n  let mensagem = '';\n  let recomendacao = '';\n\n  switch (perfilNorm) {\n    case 'conservador':\n      mensagem = `Olá, ${data.nome || 'Cliente'}! Identificamos seu perfil como Conservador. Seu foco principal é a segurança e estabilidade do seu patrimônio.`;\n      break;\n\n    case 'moderado':\n      mensagem = `Olá, ${data.nome || 'Cliente'}! Seu perfil é Moderado, buscando um equilíbrio entre segurança e rentabilidade.`;\n      break;\n\n    case 'arrojado':\n    case 'experiente':\n      mensagem = `Olá, ${data.nome || 'Cliente'}! Seu perfil é Arrojado, com foco em maximizar o potencial de retorno e maior tolerância a risco.`;\n      break;\n\n    default:\n      mensagem = `Olá, ${data.nome || 'Cliente'}! Bem-vindo aos nossos serviços financeiros.`;\n      break;\n  }\n\n  // Se houver opções encontradas na tabela de investimentos, monta o texto das recomendações\n  if (opcoesRecomendadas.length > 0) {\n    const detalheProdutos = opcoesRecomendadas\n      .map(item => `- ${item.produto}: Mínimo R$ ${item.minimo} (Rentabilidade: ${item.rentabilidade})`)\n      .join('\\n');\n      \n    recomendacao = `Com base no seu perfil ${perfilCliente}, selecionamos os seguintes produtos recomendados:\\n${detalheProdutos}`;\n  } else {\n    recomendacao = 'Por favor, realize a sua avaliação de perfil de investidor (suitability) para receber orientações personalizadas.';\n  }\n\n  // Retorna a estrutura atualizada mantendo os dados originais do cliente\n  return {\n    json: {\n      ...data,\n      mensagem,\n      recomendacao,\n      opcoes_investimento: opcoesRecomendadas // Array com os objetos de investimento filtrados\n    }\n  };\n});"
+      },
+      "id": "80d66bb2-4fdd-4fae-820f-9775c4256094",
+      "name": "Listagem do perfil e dos investimentos + mensagens",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processa todos os itens recebidos no fluxo\nreturn $input.all().map(item => {\n  const cliente = item.json;\n\n  // Trata o saldo numérico apenas internamente para validação de disponibilidade\n  const saldoNumerico = parseFloat(\n    (cliente.saldo || '0')\n      .replace(/[^\\d,-]/g, '')\n      .replace('.', '')\n      .replace(',', '.')\n  ) || 0;\n\n  // Trata a lista de investimentos com foco no aporte mínimo e rentabilidade\n  const opcoesComCalculo = (cliente.opcoes_investimento || []).map(opt => {\n    const minimo = Number(opt.minimo) || 0;\n    const disponivel = saldoNumerico >= minimo;\n\n    return {\n      produto: opt.produto,\n      aporte_minimo: `R$ ${minimo.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,\n      rentabilidade: opt.rentabilidade,\n      disponivel_para_cliente: disponivel\n    };\n  });\n\n  // Prompt do sistema ajustado (sem saldo, com foco no aporte mínimo)\n  const systemPrompt = `Você é um especialista em investimentos e assistente virtual.\nSua resposta DEVE ser estritamente um objeto JSON com o seguinte formato:\n{\n  \"email\": \"email do cliente\"\n  \"assunto\": \"Título do e-mail impactante e profissional\",\n  \"corpo\": [\n    \"Parágrafo 1: Saudação e introdução ao perfil do cliente.\",\n    \"Parágrafo 2: Apresentação detalhada de cada opção de investimento, destacando o produto, rentabilidade e o aporte mínimo necessário.\",\n    \"Parágrafo 3: Fechamento e chamada para ação.\"\n  ]\n}\n\nDiretrizes obrigatórias:\n1. Tom de voz: Sempre amigável, acolhedor e profissional.\n2. Idioma: Português do Brasil (PT-BR).\n3. Restrição de tamanho: Cada parágrafo do corpo deve ter NO MÁXIMO de 4 a 6 linhas.\n4. Conteúdo: Mencione os produtos recomendados informando claramente o aporte mínimo e a rentabilidade de cada um.\n5. RESTRIÇÃO IMPORTANTE: NUNCA mencione o valor do saldo do cliente no e-mail.\n6. Proibições: NUNCA use linguagem agressiva ou coercitiva. NUNCA faça promessas de ganhos garantidos ou retornos fixos em renda variável.`;\n\n  // Dados enviados para a IA sem o campo de saldo\n  const userPrompt = JSON.stringify({\n    cliente: {\n      email: cliente.email,\n      nome: cliente.nome,\n      perfil: cliente.perfil\n    },\n    investimentos: opcoesComCalculo\n  }, null, 2);\n\n  return {\n    json: {\n      system_prompt: systemPrompt,\n      user_prompt: userPrompt,\n      formato_resposta_esperado: {\n        assunto: \"string\",\n        corpo: [\"string\"]\n      },\n      dados_originais: cliente\n    }\n  };\n});"
+      },
+      "id": "218606ae-91e5-497a-b2b5-d15410893fb1",
+      "name": "Normalização do input da LLM",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Geração da mensagem de email com a LLM para o email\n",
+        "height": 400,
+        "width": 592,
+        "color": "#933939"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1296,
+        -256
+      ],
+      "typeVersion": 1,
+      "id": "35c71cc2-aa8f-4704-a7e3-23e7743c0e92",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Processa a saída recebida do nó da LLM\nreturn $input.all().map(item => {\n  const llmOutput = item.json;\n\n  // 1. Acessa o texto retornado dentro da estrutura do modelo\n  const rawText = llmOutput.output?.[0]?.content?.[0]?.text || '';\n\n  // 2. Limpa as marcações de bloco de código Markdown (```json ... ```)\n  const cleanJsonString = rawText\n    .replace(/```json/gi, '')\n    .replace(/```/g, '')\n    .trim();\n\n  let emailParsed = {\n    email: '',\n    assunto: 'Recomendações de Investimento',\n    corpo: []\n  };\n\n  // 3. Converte a string JSON para um objeto JavaScript\n  try {\n    emailParsed = JSON.parse(cleanJsonString);\n  } catch (error) {\n    emailParsed.corpo = [cleanJsonString];\n  }\n\n  // 4. Obtém o e-mail prioritariamente do JSON da LLM, com fallback para os dados originais\n  const emailDestinatario = emailParsed.email || llmOutput.dados_originais?.email || '';\n\n  // 5. Formata o corpo em Texto Simples (mantendo quebras de linha entre parágrafos)\n  const emailTexto = (emailParsed.corpo || []).join('\\n\\n');\n\n  // 6. Formata o corpo em HTML estruturado com parágrafos e converte negritos (**texto**)\n  const emailHtml = (emailParsed.corpo || [])\n    .map(p => `<p style=\"font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333333;\">${p.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')}</p>`)\n    .join('');\n\n  // Retorna os campos prontos para serem usados diretamente no nó de envio de e-mail do n8n\n  return {\n    json: {\n      email_destinatario: emailDestinatario,\n      assunto: emailParsed.assunto,\n      corpo_texto: emailTexto,\n      corpo_html: emailHtml,\n      paragrafos: emailParsed.corpo\n    }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1696,
+        -144
+      ],
+      "id": "9e5ed43c-95ce-4dc2-b8df-dd8f10e7e20f",
+      "name": "Normalização da LLM para JSON"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4O-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $json.user_prompt }}"
+            },
+            {
+              "role": "assistant",
+              "content": "={{ $json.system_prompt }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        1344,
+        -144
+      ],
+      "id": "b10121a3-b73e-40a4-b208-a90a623a34db",
+      "name": "Geração de mensagem do email",
+      "credentials": {
+        "openAiApi": {
+          "id": null,
+          "name": "",
+          "__aiGatewayManaged": true
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d0144011-1dac-4276-bc1d-ceca6b9c3213",
+              "leftValue": "={{ $json.email_destinatario }}",
+              "rightValue": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1936,
+        -144
+      ],
+      "id": "cd03cfed-3cda-4441-81c4-3dd13433d758",
+      "name": "Verificador de email válido"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email_destinatario }}",
+        "subject": "={{ $json.assunto }}",
+        "message": "={{ $json.corpo_html }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        2144,
+        -160
+      ],
+      "id": "8b1e31a0-9929-4a23-ac55-be6b5f77fdd5",
+      "name": "Envio de email",
+      "webhookId": "62a9165c-5a37-4f0b-8b1d-85bee2aee38b"
+    },
+    {
+      "parameters": {
+        "content": "# Verificação e envio de email",
+        "height": 400,
+        "width": 432,
+        "color": "#289543"
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        1904,
+        -256
+      ],
+      "typeVersion": 1,
+      "id": "8d5aea3a-3d9a-4575-911f-73a3fff44a1b",
+      "name": "Sticky Note3"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook dos usuários": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request dos investimentos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cruzamento dos dados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request dos investimentos": {
+      "main": [
+        [
+          {
+            "node": "Normalização dos investimentos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalização dos investimentos": {
+      "main": [
+        [
+          {
+            "node": "Cruzamento dos dados",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Cruzamento dos dados": {
+      "main": [
+        [
+          {
+            "node": "Listagem do perfil e dos investimentos + mensagens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Listagem do perfil e dos investimentos + mensagens": {
+      "main": [
+        [
+          {
+            "node": "Normalização do input da LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalização do input da LLM": {
+      "main": [
+        [
+          {
+            "node": "Geração de mensagem do email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalização da LLM para JSON": {
+      "main": [
+        [
+          {
+            "node": "Verificador de email válido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geração de mensagem do email": {
+      "main": [
+        [
+          {
+            "node": "Normalização da LLM para JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificador de email válido": {
+      "main": [
+        [
+          {
+            "node": "Envio de email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "8037f445-5237-4659-9f32-4b534679a54c",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7070a6d157ee6c2851e8b6c8af49a0fb7235316a44fe605ae99ae5e159196eda"
+  },
+  "nodeGroups": [],
+  "id": "1vWOq8mWoqwaddR2",
+  "tags": []
+}
